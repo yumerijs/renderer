@@ -1,0 +1,30 @@
+{
+  "name": "@yumerijs/vue-renderer",
+  "version": "1.0.0",
+  "description": "Vue renderer for Yumeri",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "yumeri",
+    "renderer",
+    "vue"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vue/compiler-sfc": "^3.5.25",
+    "@vue/server-renderer": "^3.3.0",
+    "esbuild": "^0.25.9"
+  },
+  "devDependencies": {
+    "@yumerijs/types": "^2.0.0",
+    "typescript": "^5.0.0",
+    "vue": "^3.3.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  }
+}
