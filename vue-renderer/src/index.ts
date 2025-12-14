@@ -12,8 +12,8 @@ const styleCache = new ComponentStyleCache()
 const PROJECT_ROOT = process.cwd()
 const manifestCache = new Map<string, ManifestRecord | null>()
 
-type ManifestEntry = { entry: string; file: string }
-type ManifestRecord = { plugin: string; entries: Record<string, ManifestEntry> }
+type ManifestEntry = { entry: string; file: string; css?: string[] }
+type ManifestRecord = { plugin: string; entries: Record<string, ManifestEntry>; css?: string[] }
 
 export default class VueRenderer implements IRenderer {
   public name = 'vue'
@@ -30,7 +30,9 @@ export default class VueRenderer implements IRenderer {
 
     const initialState = JSON.stringify(data)
     const pluginName = options.pluginName ?? null
-    let clientEntry: string | null = await resolveManifestEntry(componentFile, ssrContext.modules, pluginName)
+    const manifestInfo = await resolveManifestEntry(componentFile, ssrContext.modules, pluginName)
+    let clientEntry: string | null = manifestInfo?.entry ?? null
+    const manifestCss = manifestInfo?.css ?? []
     if (!clientEntry && options.clientEntry) {
       clientEntry = options.clientEntry
     }
@@ -55,16 +57,21 @@ export default class VueRenderer implements IRenderer {
       }
     }
 
-    const clientScript = clientEntry
-      ? `<script type="module" src="${clientEntry}"></script>`
-      : ''
+    const cssLinks = manifestCss
+      .map((href) => `<link rel="stylesheet" href="${href}">`)
+      .join('')
+
+    const clientScript = clientEntry ? `<script type="module" src="${clientEntry}"></script>` : ''
 
     return `
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Yumeri App</title>
           ${inlineCss}
+          ${cssLinks}
         </head>
         <body>
           <div id="app">${appHtml}</div>
@@ -76,10 +83,15 @@ export default class VueRenderer implements IRenderer {
   }
 }
 
-async function resolveManifestEntry(componentFile: string | null, modules: Iterable<string> | undefined, pluginName: string | null): Promise<string | null> {
+async function resolveManifestEntry(
+  componentFile: string | null,
+  modules: Iterable<string> | undefined,
+  pluginName: string | null
+): Promise<{ entry: string; css?: string[] } | null> {
   if (!pluginName) return null
   const manifest = await loadManifest(pluginName)
   if (!manifest) return null
+  const pluginRoot = getPluginRoot(pluginName)
 
   const moduleIds: string[] = []
   if (componentFile) moduleIds.push(toPosixPath(componentFile))
@@ -89,11 +101,15 @@ async function resolveManifestEntry(componentFile: string | null, modules: Itera
     }
   }
 
-  for (const id of moduleIds) {
-    const entry = manifest.entries[id] || manifest.entries[stripDistPrefix(id)]
+  for (const idRaw of moduleIds) {
+    const id = toPosixPath(idRaw)
+    const entry =
+      manifest.entries[id] ||
+      manifest.entries[stripDistPrefix(id)] ||
+      (pluginRoot ? manifest.entries[stripPrefix(id, pluginRoot)] : undefined)
     if (entry) {
-      ensureManifestResolver(manifest.plugin, manifest, getPluginRoot(pluginName))
-      return entry.entry
+      ensureManifestResolver(manifest.plugin, manifest, pluginRoot)
+      return entry
     }
   }
 
@@ -102,6 +118,12 @@ async function resolveManifestEntry(componentFile: string | null, modules: Itera
 
 function stripDistPrefix(id: string): string {
   if (id.startsWith('dist/')) return id.slice(5)
+  return id
+}
+
+function stripPrefix(id: string, base: string): string {
+  const normalizedBase = toPosixPath(base.endsWith('/') ? base : `${base}/`)
+  if (id.startsWith(normalizedBase)) return id.slice(normalizedBase.length)
   return id
 }
 
@@ -182,12 +204,27 @@ function ensureManifestResolver(pluginName: string, manifest: ManifestRecord, pl
     if (!pathname.startsWith(prefix)) return null
     const fileName = pathname.slice(prefix.length + 1)
     for (const entry of Object.values(manifest.entries)) {
-      if (entry.file.endsWith(fileName)) {
-        const abs = path.join(pluginRoot, 'dist', entry.file)
-        if (!fs.existsSync(abs)) return null
-        const body = await fs.promises.readFile(abs)
-        return { body, contentType: 'application/javascript' }
+      const fileCandidates = [entry.file]
+      if (entry.css) fileCandidates.push(...entry.css.map((css) => css.replace(prefix + '/', 'client/')))
+      for (const rel of fileCandidates) {
+        if (rel.endsWith(fileName)) {
+          const abs = path.join(pluginRoot, 'dist', rel)
+          if (!fs.existsSync(abs)) continue
+          const body = await fs.promises.readFile(abs)
+          const contentType = rel.endsWith('.css') ? 'text/css' : 'application/javascript'
+          return { body, contentType }
+        }
       }
+    }
+
+    // fallback: serve any file under dist/client or dist root with the given suffix
+    const direct = path.join(pluginRoot, 'dist', fileName)
+    const clientFile = path.join(pluginRoot, 'dist', 'client', fileName)
+    const target = fs.existsSync(direct) ? direct : fs.existsSync(clientFile) ? clientFile : null
+    if (target) {
+      const body = await fs.promises.readFile(target)
+      const contentType = target.endsWith('.css') ? 'text/css' : 'application/javascript'
+      return { body, contentType }
     }
     return null
   })
