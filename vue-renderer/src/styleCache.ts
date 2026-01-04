@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import { parse } from '@vue/compiler-sfc';
-import { compileSfcStyles } from './sfcStyles';
+import { compileSfcStyles } from './sfcStyles.js';
 
 type StyleRecord = {
   css: string;

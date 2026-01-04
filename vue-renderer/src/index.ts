@@ -1,8 +1,8 @@
-import { IRenderer, RenderOptions } from '@yumerijs/types'
+import type { IRenderer, RenderOptions } from '@yumerijs/types'
 import { createApp } from 'vue'
 import { renderToString } from '@vue/server-renderer'
-import { ClientBundleManager } from './clientBundleManager'
-import { ComponentStyleCache } from './styleCache'
+import { ClientBundleManager } from './clientBundleManager.js'
+import { ComponentStyleCache } from './styleCache.js'
 
 const bundleManager = new ClientBundleManager()
 const styleCache = new ComponentStyleCache()

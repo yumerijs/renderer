@@ -4,6 +4,7 @@
   "description": "Vue renderer for Yumeri",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "scripts": {
     "build": "tsc"
   },
@@ -13,7 +14,7 @@
     "vue"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@vue/compiler-sfc": "^3.5.25",
     "@vue/server-renderer": "^3.3.0",
