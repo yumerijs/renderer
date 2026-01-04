@@ -1,4 +1,4 @@
-import { IRenderer, RenderOptions } from '@yumerijs/types'
+import type { IRenderer, RenderOptions } from '@yumerijs/types'
 import { createApp } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import path from 'path'

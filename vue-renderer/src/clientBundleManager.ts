@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import { build } from 'esbuild';
 import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc';
-import { compileSfcStyles } from './sfcStyles';
+import { compileSfcStyles } from './sfcStyles.js';
 import { registerVirtualAssetResolver } from '@yumerijs/types';
 
 type BundleRecord = {
