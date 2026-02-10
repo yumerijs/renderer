@@ -1,0 +1,26 @@
+{
+  "name": "@yumerijs/ejs-renderer",
+  "version": "1.0.0",
+  "description": "Ejs renderer for Yumeri",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [
+    "yumeri",
+    "renderer",
+    "vue"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ejs": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@yumerijs/types": "^2.0.0",
+    "typescript": "^5.0.0"
+  }
+}
