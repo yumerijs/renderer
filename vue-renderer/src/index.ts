@@ -2,7 +2,7 @@ import type { IRenderer, RenderOptions } from '@yumerijs/types'
 import { createApp } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import path from 'path'
-import fs from 'fs'
+import fs from 'fs/promises'
 import { ClientBundleManager } from './clientBundleManager'
 import { ComponentStyleCache } from './styleCache'
 import { registerVirtualAssetResolver } from '@yumerijs/types'
@@ -23,7 +23,7 @@ export default class VueRenderer implements IRenderer {
     const ssrContext: any = { modules: new Set<string>() }
     const appHtml = await renderToString(app, ssrContext)
 
-    const componentFile = resolveComponentFile(component, ssrContext.modules, options.pluginName)
+    const componentFile = await resolveComponentFile(component, ssrContext.modules, options.pluginName)
     if (componentFile && component && !component.__file) {
       component.__file = componentFile
     }
@@ -81,6 +81,9 @@ export default class VueRenderer implements IRenderer {
       </html>
     `
   }
+  async renderFile(file: string, options: Record<string, unknown>): Promise<string> {
+    return await this.render((await fs.readFile(file, 'utf-8')), options)
+  }
 }
 
 async function resolveManifestEntry(
@@ -127,7 +130,7 @@ function stripPrefix(id: string, base: string): string {
   return id
 }
 
-function resolveComponentFile(component: any, modules: Iterable<string> | undefined, pluginName?: string): string | null {
+async function resolveComponentFile(component: any, modules: Iterable<string> | undefined, pluginName?: string): Promise<string | null> {
   if (component && component.__file) return component.__file
   if (!modules) return null
 
@@ -146,9 +149,11 @@ function resolveComponentFile(component: any, modules: Iterable<string> | undefi
   return null
 }
 
-function resolveExisting(modId: string, baseDir: string = PROJECT_ROOT): string | null {
+async function resolveExisting(modId: string, baseDir: string = PROJECT_ROOT): Promise<string | null> {
   const candidate = path.isAbsolute(modId) ? modId : path.resolve(baseDir, modId)
-  return fs.existsSync(candidate) ? candidate : null
+  try { await fs.access(candidate, fs.constants.F_OK) }
+  catch { return null; }
+  return candidate
 }
 
 function resolvePluginRoot(pluginName: string): string | null {
@@ -167,13 +172,20 @@ async function loadManifest(pluginName: string): Promise<ManifestRecord | null> 
     manifestCache.set(pluginName, null)
     return null
   }
+
   const manifestPath = path.join(pluginRoot, 'dist', 'ui-manifest.json')
-  if (!fs.existsSync(manifestPath)) {
+
+  // 使用之前定义的包装函数，直接用 if 判断
+  if (!(await existsAsync(manifestPath))) {
     manifestCache.set(pluginName, null)
     return null
   }
+
   try {
-    const json = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    // 既然已经导入了 promises，直接调用 readFile
+    const content = await fs.readFile(manifestPath, 'utf8')
+    const json = JSON.parse(content)
+
     if (json && json.entries) {
       manifestCache.set(pluginName, json)
       return json
@@ -181,9 +193,11 @@ async function loadManifest(pluginName: string): Promise<ManifestRecord | null> 
   } catch (err) {
     console.error('[yumeri][vue-renderer] Failed to load UI manifest for plugin', pluginName, err)
   }
+
   manifestCache.set(pluginName, null)
   return null
 }
+
 
 function getPluginRoot(pluginName: string): string | null {
   try {
@@ -196,39 +210,67 @@ function getPluginRoot(pluginName: string): string | null {
 
 const manifestResolvers = new Set<string>()
 
+async function existsAsync(filepath: string) {
+  try {
+    await fs.access(filepath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ensureManifestResolver(pluginName: string, manifest: ManifestRecord, pluginRoot: string | null) {
-  if (!pluginRoot) return
-  if (manifestResolvers.has(pluginName)) return
-  const prefix = `/__yumeri_vue_prebuilt/${pluginName}`
+  if (!pluginRoot) return;
+  if (manifestResolvers.has(pluginName)) return;
+  
+  const prefix = `/__yumeri_vue_prebuilt/${pluginName}`;
+  
   registerVirtualAssetResolver(async (pathname) => {
-    if (!pathname.startsWith(prefix)) return null
-    const fileName = pathname.slice(prefix.length + 1)
+    if (!pathname.startsWith(prefix)) return null;
+    const fileName = pathname.slice(prefix.length + 1);
+
     for (const entry of Object.values(manifest.entries)) {
-      const fileCandidates = [entry.file]
-      if (entry.css) fileCandidates.push(...entry.css.map((css) => css.replace(prefix + '/', 'client/')))
+      const fileCandidates = [entry.file];
+      if (entry.css) {
+        fileCandidates.push(...entry.css.map((css) => css.replace(prefix + '/', 'client/')));
+      }
+
       for (const rel of fileCandidates) {
         if (rel.endsWith(fileName)) {
-          const abs = path.join(pluginRoot, 'dist', rel)
-          if (!fs.existsSync(abs)) continue
-          const body = await fs.promises.readFile(abs)
-          const contentType = rel.endsWith('.css') ? 'text/css' : 'application/javascript'
-          return { body, contentType }
+          const abs = path.join(pluginRoot, 'dist', rel);
+          
+          // 修改点 1：使用异步检查
+          if (!(await existsAsync(abs))) continue;
+          
+          const body = await fs.readFile(abs);
+          const contentType = rel.endsWith('.css') ? 'text/css' : 'application/javascript';
+          return { body, contentType };
         }
       }
     }
 
-    // fallback: serve any file under dist/client or dist root with the given suffix
-    const direct = path.join(pluginRoot, 'dist', fileName)
-    const clientFile = path.join(pluginRoot, 'dist', 'client', fileName)
-    const target = fs.existsSync(direct) ? direct : fs.existsSync(clientFile) ? clientFile : null
-    if (target) {
-      const body = await fs.promises.readFile(target)
-      const contentType = target.endsWith('.css') ? 'text/css' : 'application/javascript'
-      return { body, contentType }
+    // fallback 逻辑
+    const direct = path.join(pluginRoot, 'dist', fileName);
+    const clientFile = path.join(pluginRoot, 'dist', 'client', fileName);
+
+    // 修改点 2：并发或顺序检查
+    let target: string | null = null;
+    if (await existsAsync(direct)) {
+      target = direct;
+    } else if (await existsAsync(clientFile)) {
+      target = clientFile;
     }
-    return null
-  })
-  manifestResolvers.add(pluginName)
+
+    if (target) {
+      const body = await fs.readFile(target);
+      const contentType = target.endsWith('.css') ? 'text/css' : 'application/javascript';
+      return { body, contentType };
+    }
+    
+    return null;
+  });
+
+  manifestResolvers.add(pluginName);
 }
 
 function toPosixPath(p: string): string {
