@@ -1,6 +1,6 @@
 {
   "name": "@yumerijs/ejs-renderer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ejs renderer for Yumeri",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",
-    "@yumerijs/types": "^2.0.0",
+    "@yumerijs/types": "^3.0.0-alpha.1",
     "typescript": "^5.0.0"
   }
 }
